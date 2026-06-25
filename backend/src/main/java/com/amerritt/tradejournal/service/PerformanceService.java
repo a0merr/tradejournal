@@ -51,10 +51,11 @@ public class PerformanceService {
             }
         }
 
-        // realizedPnl + winRate need lot-matching of closing fills against opening fills
-        // (roadmap item). Report null rather than a misleading zero.
+        // Realized PnL + win rate from FIFO lot-matching over the account's fill stream.
+        PnlCalculator.Result pnl = PnlCalculator.compute(fillRepository.findAccountFillsForPnl(id));
+
         return new PerformanceResponse(
-                id, totalOrders, totalFills, openPositions,
-                totalFees, grossNotional, openExposure, null, null);
+                id, totalOrders, totalFills, openPositions, pnl.closedTrades(),
+                totalFees, grossNotional, openExposure, pnl.realizedPnl(), pnl.winRate());
     }
 }

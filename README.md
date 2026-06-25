@@ -166,12 +166,12 @@ Integration tests run against a **real PostgreSQL instance via Testcontainers**,
 - [x] Fill ingestion endpoint
 - [x] Orders + positions endpoints
 - [x] React dashboard: positions table + exposure chart
-- [x] Performance endpoint (exposure, fees, notional; PnL + win rate are stubbed pending lot-matching)
+- [x] Performance endpoint (exposure, fees, notional, realized PnL + win rate via FIFO lot-matching)
 - [x] Testcontainers integration suite
 - [x] CI (build + test on push)
 - [x] Deploy config (Render Blueprint: db + API + static frontend)
 - [ ] Live demo running on a hosted URL
-- [ ] Realized PnL + win rate (lot-matching of closing fills)
+- [x] Realized PnL + win rate (FIFO lot-matching of closing fills)
 - [ ] CSV import for fills (broker statements)
 ---
  

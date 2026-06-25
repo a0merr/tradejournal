@@ -65,6 +65,11 @@ class FillJourneyIT extends AbstractPostgresIT {
         assertThat(perf.getBody().totalFills()).isEqualTo(2);
         assertThat(perf.getBody().totalOrders()).isEqualTo(2);
         assertThat(perf.getBody().openPositions()).isEqualTo(1);
+        // FIFO: SELL 1 closes part of the BUY-2 lot. gross (120-100)=20, fees
+        // (0.05 entry + 0.10 exit)=0.15 -> realized 19.85; one closed trade, a win.
+        assertThat(perf.getBody().closedTrades()).isEqualTo(1);
+        assertThat(perf.getBody().realizedPnl()).isEqualByComparingTo("19.85");
+        assertThat(perf.getBody().winRate()).isEqualByComparingTo("1.0");
     }
 
     @Test
