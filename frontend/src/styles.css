@@ -186,3 +186,31 @@ table.grid td {
   padding: 10px;
   border-bottom: 1px solid rgba(31, 39, 51, 0.5);
 }
+
+/* CSV import */
+.small {
+  font-size: 12px;
+}
+.import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.import-row input[type="file"] {
+  color: var(--muted);
+  font-size: 13px;
+}
+.import-result {
+  margin-top: 12px;
+  font-size: 14px;
+}
+.import-errors {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.import-errors li {
+  margin: 2px 0;
+}

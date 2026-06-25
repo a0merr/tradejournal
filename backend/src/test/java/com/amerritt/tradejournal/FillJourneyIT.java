@@ -3,11 +3,13 @@ package com.amerritt.tradejournal;
 import com.amerritt.tradejournal.dto.AccountResponse;
 import com.amerritt.tradejournal.dto.AuthResponse;
 import com.amerritt.tradejournal.dto.FillResponse;
+import com.amerritt.tradejournal.dto.ImportResult;
 import com.amerritt.tradejournal.dto.PerformanceResponse;
 import com.amerritt.tradejournal.dto.PositionResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -15,7 +17,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
+import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +88,50 @@ class FillJourneyIT extends AbstractPostgresIT {
                 new HttpEntity<>(fillBody(aAccount, "BUY", new BigDecimal("1"), new BigDecimal("50")), b),
                 String.class);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void csvImportCommitsGoodRowsAndReportsBadOnes() {
+        HttpHeaders auth = bearer(register());
+        Long accountId = accounts(auth).get(0).id();
+
+        String csv = String.join("\n",
+                "symbol,exchange,assetClass,side,type,quantity,price,fee,filledAt",
+                "IMP-USD,IMPEX,CRYPTO,BUY,MARKET,3,100,0.30,2026-06-01T10:00:00Z",
+                "IMP-USD,IMPEX,CRYPTO,SELL,LIMIT,1,150,0.10,2026-06-01T11:00:00Z",
+                "IMP-USD,IMPEX,CRYPTO,SIDEWAYS,MARKET,1,100,0,",   // bad side -> row error
+                "IMP-USD,IMPEX,CRYPTO,BUY,MARKET,notanumber,100,0,"); // bad quantity -> row error
+
+        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+        form.add("file", new ByteArrayResource(csv.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return "fills.csv";
+            }
+        });
+        form.add("accountId", accountId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(auth.getFirst(HttpHeaders.AUTHORIZATION).substring("Bearer ".length()));
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        ResponseEntity<ImportResult> resp = rest.exchange("/api/fills/import", HttpMethod.POST,
+                new HttpEntity<>(form, headers), ImportResult.class);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getBody().imported()).isEqualTo(2);
+        assertThat(resp.getBody().failed()).isEqualTo(2);
+        assertThat(resp.getBody().errors()).hasSize(2);
+        // bad rows are lines 4 and 5 in the file
+        assertThat(resp.getBody().errors().get(0).line()).isEqualTo(4);
+
+        // imported fills reconstruct into a net +2 position (BUY 3 - SELL 1)
+        List<PositionResponse> positions = exchangeList("/api/positions", auth);
+        PositionResponse imp = positions.stream()
+                .filter(p -> p.symbol().equals("IMP-USD"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(imp.netQuantity()).isEqualByComparingTo("2");
     }
 
     // --- helpers ---
