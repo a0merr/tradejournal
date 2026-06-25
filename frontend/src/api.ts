@@ -1,5 +1,9 @@
 // Thin typed client over the tradejournal REST API. Token is held in localStorage.
 
+// In dev this is empty, so requests stay same-origin and Vite proxies /api to the
+// backend. In a deployed static build it's the backend's absolute URL.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
 const TOKEN_KEY = "tradejournal.token";
 
 export function getToken(): string | null {
@@ -72,7 +76,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const resp = await fetch(`/api${path}`, { ...init, headers });
+  const resp = await fetch(`${API_BASE}/api${path}`, { ...init, headers });
   if (resp.status === 401) {
     setToken(null);
     throw new ApiError(401, "Session expired — please sign in again.");

@@ -10,7 +10,7 @@
  
 > ⚠️ **Status: early development.** The design below describes the target. Sections marked _planned_ are not yet implemented, and the live-demo link is a placeholder until the app is deployed.
  
-**Live demo:** _coming soon_ · **API docs:** `/swagger-ui` when running locally
+**Live demo:** deploy in one click via [`render.yaml`](render.yaml) — see [DEPLOY.md](DEPLOY.md) · **API docs:** `/swagger-ui` when running
  
 ---
  
@@ -169,7 +169,8 @@ Integration tests run against a **real PostgreSQL instance via Testcontainers**,
 - [x] Performance endpoint (exposure, fees, notional; PnL + win rate are stubbed pending lot-matching)
 - [x] Testcontainers integration suite
 - [x] CI (build + test on push)
-- [ ] Deployed live demo
+- [x] Deploy config (Render Blueprint: db + API + static frontend)
+- [ ] Live demo running on a hosted URL
 - [ ] Realized PnL + win rate (lot-matching of closing fills)
 - [ ] CSV import for fills (broker statements)
 ---
