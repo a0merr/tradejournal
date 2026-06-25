@@ -87,6 +87,7 @@ All of this lives in versioned Flyway migrations under `backend/src/main/resourc
 | `POST` | `/api/auth/register` | Create an account |
 | `POST` | `/api/auth/login` | Obtain a JWT |
 | `POST` | `/api/fills` | **Ingest a fill** (the bot's entry point) |
+| `POST` | `/api/fills/import` | Bulk-import fills from a CSV ([`sample-fills.csv`](sample-fills.csv)) |
 | `GET` | `/api/orders` | List orders, filterable by account/status |
 | `GET` | `/api/orders/{id}` | One order with its fills |
 | `GET` | `/api/positions` | Current positions per account |
@@ -172,7 +173,7 @@ Integration tests run against a **real PostgreSQL instance via Testcontainers**,
 - [x] Deploy config (Render Blueprint: db + API + static frontend)
 - [ ] Live demo running on a hosted URL
 - [x] Realized PnL + win rate (FIFO lot-matching of closing fills)
-- [ ] CSV import for fills (broker statements)
+- [x] CSV import for fills (broker statements)
 ---
  
 ## Deployment _(planned)_

@@ -65,6 +65,12 @@ export interface Performance {
   winRate: string | null;
 }
 
+export interface ImportResult {
+  imported: number;
+  failed: number;
+  errors: { line: number; message: string }[];
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -112,4 +118,28 @@ export const api = {
   orders: () => request<Order[]>("/orders"),
   performance: (accountId: number) =>
     request<Performance>(`/performance?accountId=${accountId}`),
+
+  // Multipart upload — bypasses the JSON request() helper. Browser sets the boundary.
+  async importFills(accountId: number, file: File): Promise<ImportResult> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("accountId", String(accountId));
+    const headers = new Headers();
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+
+    const resp = await fetch(`${API_BASE}/api/fills/import`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (resp.status === 401) {
+      setToken(null);
+      throw new ApiError(401, "Session expired — please sign in again.");
+    }
+    if (!resp.ok) {
+      throw new ApiError(resp.status, `Import failed (${resp.status})`);
+    }
+    return resp.json() as Promise<ImportResult>;
+  },
 };

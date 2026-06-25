@@ -3,6 +3,7 @@ import { Account, api, ApiError, Performance, Position } from "../api";
 import PositionsTable from "./PositionsTable";
 import PerformanceCards from "./PerformanceCards";
 import ExposureChart from "./ExposureChart";
+import ImportCsv from "./ImportCsv";
 
 export default function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -11,6 +12,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [perf, setPerf] = useState<Performance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloadTick, setReloadTick] = useState(0);
 
   // Load accounts once; pick the first.
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
       })
       .catch((err) => handle(err))
       .finally(() => setLoading(false));
-  }, [accountId]);
+  }, [accountId, reloadTick]);
 
   function handle(err: unknown) {
     if (err instanceof ApiError && err.status === 401) {
@@ -54,6 +56,8 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
         <div className="topbar-right">
           {accounts.length > 0 && (
             <select
+              aria-label="Select account"
+              title="Select account"
               value={accountId ?? ""}
               onChange={(e) => setAccountId(Number(e.target.value))}
             >
@@ -64,7 +68,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
               ))}
             </select>
           )}
-          <button className="link" onClick={onLogout}>
+          <button type="button" className="link" onClick={onLogout}>
             Sign out
           </button>
         </div>
@@ -86,6 +90,16 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
             <h2>Positions</h2>
             <PositionsTable positions={positions} />
           </section>
+
+          {accountId != null && (
+            <section className="card">
+              <h2>Import fills (CSV)</h2>
+              <ImportCsv
+                accountId={accountId}
+                onImported={() => setReloadTick((t) => t + 1)}
+              />
+            </section>
+          )}
         </>
       )}
     </div>
