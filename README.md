@@ -114,12 +114,14 @@ Flyway applies the migrations on first boot, so the database is ready with no ma
 To run the pieces separately during development:
  
 ```bash
-# backend
-cd backend && ./mvnw spring-boot:run
+# backend (needs a local Postgres on :5432, or run `docker compose up db` first)
+cd backend && mvn spring-boot:run
  
 # frontend
 cd frontend && npm install && npm run dev
 ```
+ 
+> Prefer `./mvnw`? Generate the Maven wrapper once with `mvn -N wrapper:wrapper`.
  
 ---
  
@@ -150,7 +152,7 @@ tradejournal/
 ## Testing
  
 ```bash
-cd backend && ./mvnw test
+cd backend && mvn test    # requires Docker (Testcontainers spins up Postgres 16)
 ```
  
 Integration tests run against a **real PostgreSQL instance via Testcontainers**, not an in-memory substitute — so migrations, constraints, and SQL behavior are exercised exactly as they'll run in production. Service-layer logic (position reconstruction, PnL) is covered by unit tests with the database mocked.
@@ -159,15 +161,16 @@ Integration tests run against a **real PostgreSQL instance via Testcontainers**,
  
 ## Roadmap
  
-- [ ] Schema + Flyway migrations
-- [ ] Auth (register / login / JWT)
-- [ ] Fill ingestion endpoint
-- [ ] Orders + positions endpoints
-- [ ] React dashboard: positions table + equity curve
-- [ ] Performance endpoint (PnL, win rate, exposure)
-- [ ] Testcontainers integration suite
-- [ ] CI (build + test on push)
+- [x] Schema + Flyway migrations
+- [x] Auth (register / login / JWT)
+- [x] Fill ingestion endpoint
+- [x] Orders + positions endpoints
+- [x] React dashboard: positions table + exposure chart
+- [x] Performance endpoint (exposure, fees, notional; PnL + win rate are stubbed pending lot-matching)
+- [x] Testcontainers integration suite
+- [x] CI (build + test on push)
 - [ ] Deployed live demo
+- [ ] Realized PnL + win rate (lot-matching of closing fills)
 - [ ] CSV import for fills (broker statements)
 ---
  

@@ -1,0 +1,34 @@
+# Java / Maven
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/.gitignore
+hs_err_pid*
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+*.tsbuildinfo
+# tsc -b emits these from vite.config.ts; keep only the .ts source
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
