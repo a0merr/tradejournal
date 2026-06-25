@@ -57,6 +57,7 @@ export interface Performance {
   totalOrders: number;
   totalFills: number;
   openPositions: number;
+  closedTrades: number;
   totalFees: string;
   grossNotional: string;
   openExposure: string;

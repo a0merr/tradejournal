@@ -20,4 +20,9 @@ public interface FillRepository extends JpaRepository<Fill, Long> {
 
     @Query("SELECT COALESCE(SUM(f.quantity * f.price), 0) FROM Fill f WHERE f.order.account.id = :accountId")
     BigDecimal sumGrossNotionalByAccountId(@Param("accountId") Long accountId);
+
+    /** All of an account's fills in execution order, with order + instrument fetched, for PnL. */
+    @Query("SELECT f FROM Fill f JOIN FETCH f.order o JOIN FETCH o.instrument "
+            + "WHERE o.account.id = :accountId ORDER BY f.filledAt ASC, f.id ASC")
+    List<Fill> findAccountFillsForPnl(@Param("accountId") Long accountId);
 }
