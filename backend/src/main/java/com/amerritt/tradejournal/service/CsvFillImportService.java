@@ -37,7 +37,7 @@ public class CsvFillImportService {
             .setIgnoreSurroundingSpaces(true)
             .setIgnoreEmptyLines(true)
             .setTrim(true)
-            .get();
+            .build();
 
     private final FillService fillService;
 
