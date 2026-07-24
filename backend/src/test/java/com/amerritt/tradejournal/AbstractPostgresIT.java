@@ -5,22 +5,27 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Base for integration tests: boots the app against a real PostgreSQL 16 via Testcontainers,
  * so Flyway migrations, constraints, and the positions view run exactly as in production.
- * The dev profile is active so the repeatable seed is applied.
+ * The dev profile is active so the repeatable seed is applied; the test profile carries
+ * test-only overrides.
+ *
+ * <p>The container is a JVM-wide singleton started once and never stopped, rather than a
+ * {@code @Container} field. A shared {@code @Container} on a base class is stopped after the
+ * first test class finishes and then handed, dead, to the next — and starting one per class
+ * would cost a Postgres boot per class for no benefit. Ryuk reaps it when the JVM exits.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ActiveProfiles("dev")
-@Testcontainers
+@ActiveProfiles({"dev", "test"})
 public abstract class AbstractPostgresIT {
 
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    static {
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void datasourceProps(DynamicPropertyRegistry registry) {

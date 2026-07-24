@@ -9,12 +9,16 @@ import {
 } from "recharts";
 import { Position } from "../api";
 
-// Absolute notional exposure per instrument, derived from the positions view.
+// Absolute notional exposure per instrument, priced at the FIFO cost basis of the open lots —
+// the same basis realized PnL is measured against. Flat instruments have no basis and no bar.
 export default function ExposureChart({ positions }: { positions: Position[] }) {
   const data = positions
     .map((p) => ({
       symbol: p.symbol,
-      exposure: Math.abs(Number(p.netQuantity) * Number(p.avgPrice)),
+      exposure:
+        p.avgEntryPrice == null
+          ? 0
+          : Math.abs(Number(p.netQuantity) * Number(p.avgEntryPrice)),
     }))
     .filter((d) => d.exposure > 0)
     .sort((a, b) => b.exposure - a.exposure);

@@ -1,0 +1,6 @@
+# Test-only overrides, layered on top of the real application.yml (profile: test).
+tradejournal:
+  rate-limit:
+    # The suite registers and refreshes far more often than a person would, from a single IP.
+    # Throttling is exercised deliberately in AuthRateLimitIT, which lowers this for itself.
+    auth-attempts: 100000

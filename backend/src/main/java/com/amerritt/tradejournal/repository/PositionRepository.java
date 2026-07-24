@@ -8,7 +8,5 @@ import java.util.List;
 
 public interface PositionRepository extends JpaRepository<Position, PositionId> {
 
-    List<Position> findByAccountIdIn(List<Long> accountIds);
-
     List<Position> findByAccountId(Long accountId);
 }

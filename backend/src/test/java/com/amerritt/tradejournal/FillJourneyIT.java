@@ -54,13 +54,17 @@ class FillJourneyIT extends AbstractPostgresIT {
         ingest(auth, accountId, "BUY", new BigDecimal("2"), new BigDecimal("100"));
         ingest(auth, accountId, "SELL", new BigDecimal("1"), new BigDecimal("120"));
 
-        // positions view: net = 2 - 1 = 1; avg over all fills = (2*100 + 1*120)/3
         List<PositionResponse> positions = exchangeList("/api/positions", auth);
         assertThat(positions).hasSize(1);
         PositionResponse p = positions.get(0);
         assertThat(p.netQuantity()).isEqualByComparingTo("1");
-        assertThat(p.avgPrice()).isEqualByComparingTo(new BigDecimal("320").divide(new BigDecimal("3"), 8, java.math.RoundingMode.HALF_UP));
         assertThat(p.fillCount()).isEqualTo(2);
+        // The unit still held was bought at 100. The sale at 120 does not change its basis.
+        assertThat(p.avgEntryPrice()).isEqualByComparingTo("100");
+        // Average across every fill, buys and sells alike: (2*100 + 1*120)/3. Reported
+        // separately precisely because it is not a basis.
+        assertThat(p.avgFillPrice()).isEqualByComparingTo(
+                new BigDecimal("320").divide(new BigDecimal("3"), 8, java.math.RoundingMode.HALF_UP));
 
         // performance summary for the account
         ResponseEntity<PerformanceResponse> perf = rest.exchange(
@@ -75,6 +79,64 @@ class FillJourneyIT extends AbstractPostgresIT {
         assertThat(perf.getBody().closedTrades()).isEqualTo(1);
         assertThat(perf.getBody().realizedPnl()).isEqualByComparingTo("19.85");
         assertThat(perf.getBody().winRate()).isEqualByComparingTo("1.0");
+        // Exposure prices the open unit at its FIFO basis (1 * 100), not at a blended average.
+        assertThat(perf.getBody().openExposure()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void reingestingTheSameExecutionIsANoOp() {
+        HttpHeaders auth = bearer(register());
+        Long accountId = accounts(auth).get(0).id();
+
+        Map<String, Object> body = new java.util.HashMap<>(
+                fillBody(accountId, "BUY", new BigDecimal("5"), new BigDecimal("70")));
+        body.put("externalId", "exec-" + System.nanoTime());
+
+        ResponseEntity<FillResponse> first = rest.exchange("/api/fills", HttpMethod.POST,
+                new HttpEntity<>(body, auth), FillResponse.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // The bot retries after a timeout: same execution, so 200 and the same fill back.
+        ResponseEntity<FillResponse> retry = rest.exchange("/api/fills", HttpMethod.POST,
+                new HttpEntity<>(body, auth), FillResponse.class);
+        assertThat(retry.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(retry.getBody().id()).isEqualTo(first.getBody().id());
+
+        // ...and the position reflects one execution, not two.
+        PositionResponse p = exchangeList("/api/positions", auth).stream()
+                .filter(x -> x.symbol().equals("TEST-USD"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(p.netQuantity()).isEqualByComparingTo("5");
+        assertThat(p.fillCount()).isEqualTo(1);
+    }
+
+    @Test
+    void csvReimportSkipsRowsAlreadyOnFile() {
+        HttpHeaders auth = bearer(register());
+        Long accountId = accounts(auth).get(0).id();
+        String tag = "csv-" + System.nanoTime();
+
+        String csv = String.join("\n",
+                "symbol,exchange,assetClass,side,type,quantity,price,fee,filledAt,externalId",
+                "DUP-USD,IMPEX,CRYPTO,BUY,MARKET,2,10,0,2026-06-01T10:00:00Z," + tag + "-a",
+                "DUP-USD,IMPEX,CRYPTO,BUY,MARKET,3,20,0,2026-06-01T11:00:00Z," + tag + "-b");
+
+        ImportResult first = importCsv(auth, accountId, csv);
+        assertThat(first.imported()).isEqualTo(2);
+        assertThat(first.skipped()).isZero();
+
+        // Same statement uploaded twice — a normal operator mistake, and it must not double-book.
+        ImportResult second = importCsv(auth, accountId, csv);
+        assertThat(second.imported()).isZero();
+        assertThat(second.skipped()).isEqualTo(2);
+        assertThat(second.failed()).isZero();
+
+        PositionResponse p = exchangeList("/api/positions", auth).stream()
+                .filter(x -> x.symbol().equals("DUP-USD"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(p.netQuantity()).isEqualByComparingTo("5");
     }
 
     @Test
@@ -102,28 +164,12 @@ class FillJourneyIT extends AbstractPostgresIT {
                 "IMP-USD,IMPEX,CRYPTO,SIDEWAYS,MARKET,1,100,0,",   // bad side -> row error
                 "IMP-USD,IMPEX,CRYPTO,BUY,MARKET,notanumber,100,0,"); // bad quantity -> row error
 
-        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-        form.add("file", new ByteArrayResource(csv.getBytes(StandardCharsets.UTF_8)) {
-            @Override
-            public String getFilename() {
-                return "fills.csv";
-            }
-        });
-        form.add("accountId", accountId);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(auth.getFirst(HttpHeaders.AUTHORIZATION).substring("Bearer ".length()));
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-
-        ResponseEntity<ImportResult> resp = rest.exchange("/api/fills/import", HttpMethod.POST,
-                new HttpEntity<>(form, headers), ImportResult.class);
-
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(resp.getBody().imported()).isEqualTo(2);
-        assertThat(resp.getBody().failed()).isEqualTo(2);
-        assertThat(resp.getBody().errors()).hasSize(2);
+        ImportResult result = importCsv(auth, accountId, csv);
+        assertThat(result.imported()).isEqualTo(2);
+        assertThat(result.failed()).isEqualTo(2);
+        assertThat(result.errors()).hasSize(2);
         // bad rows are lines 4 and 5 in the file
-        assertThat(resp.getBody().errors().get(0).line()).isEqualTo(4);
+        assertThat(result.errors().get(0).line()).isEqualTo(4);
 
         // imported fills reconstruct into a net +2 position (BUY 3 - SELL 1)
         List<PositionResponse> positions = exchangeList("/api/positions", auth);
@@ -175,6 +221,26 @@ class FillJourneyIT extends AbstractPostgresIT {
                 "quantity", qty,
                 "price", price,
                 "fee", new BigDecimal("0.10"));
+    }
+
+    private ImportResult importCsv(HttpHeaders auth, Long accountId, String csv) {
+        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+        form.add("file", new ByteArrayResource(csv.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return "fills.csv";
+            }
+        });
+        form.add("accountId", accountId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(auth.getFirst(HttpHeaders.AUTHORIZATION).substring("Bearer ".length()));
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        ResponseEntity<ImportResult> resp = rest.exchange("/api/fills/import", HttpMethod.POST,
+                new HttpEntity<>(form, headers), ImportResult.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return resp.getBody();
     }
 
     private List<PositionResponse> exchangeList(String path, HttpHeaders auth) {

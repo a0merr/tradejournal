@@ -2,68 +2,81 @@ package com.amerritt.tradejournal.service;
 
 import com.amerritt.tradejournal.dto.FillRequest;
 import com.amerritt.tradejournal.dto.FillResponse;
-import com.amerritt.tradejournal.model.Account;
-import com.amerritt.tradejournal.model.Fill;
-import com.amerritt.tradejournal.model.Instrument;
-import com.amerritt.tradejournal.model.OrderEntity;
-import com.amerritt.tradejournal.model.OrderStatus;
-import com.amerritt.tradejournal.repository.FillRepository;
-import com.amerritt.tradejournal.repository.InstrumentRepository;
-import com.amerritt.tradejournal.repository.OrderRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
+import java.util.Optional;
 
+/**
+ * Ingests fills from the bot, idempotently when the caller supplies a broker execution id.
+ *
+ * <p>Deliberately not {@code @Transactional}: it coordinates across transaction boundaries.
+ * Each attempt runs in its own transaction via {@link FillWriter}, which is what lets a
+ * constraint violation be recovered from rather than merely reported.
+ */
 @Service
 public class FillService {
 
-    private final AccountService accountService;
-    private final InstrumentRepository instrumentRepository;
-    private final OrderRepository orderRepository;
-    private final FillRepository fillRepository;
+    private final FillWriter writer;
 
-    public FillService(AccountService accountService, InstrumentRepository instrumentRepository,
-                       OrderRepository orderRepository, FillRepository fillRepository) {
-        this.accountService = accountService;
-        this.instrumentRepository = instrumentRepository;
-        this.orderRepository = orderRepository;
-        this.fillRepository = fillRepository;
+    public FillService(FillWriter writer) {
+        this.writer = writer;
     }
 
     /**
-     * Ingests one fill from the bot. The payload is self-describing, so the service
-     * resolves (or creates) the instrument, records a single FILLED order for this
-     * execution, and stores the fill against it.
+     * @param duplicate true when the execution was already on file and nothing was written —
+     *                  the caller should answer 200, not 201
      */
-    @Transactional
-    public FillResponse ingest(FillRequest req, Long userId) {
-        Account account = accountService.requireOwned(req.accountId(), userId);
-        Instrument instrument = resolveInstrument(req);
-
-        OrderEntity order = orderRepository.save(new OrderEntity(
-                account, instrument, req.side(), req.type(), req.quantity(), OrderStatus.FILLED));
-
-        BigDecimal fee = req.fee() != null ? req.fee() : BigDecimal.ZERO;
-        OffsetDateTime filledAt = req.filledAt() != null ? req.filledAt() : OffsetDateTime.now();
-
-        Fill fill = fillRepository.save(new Fill(order, req.quantity(), req.price(), fee, filledAt));
-        return FillResponse.from(fill);
+    public record Ingested(FillResponse fill, boolean duplicate) {
     }
 
-    private Instrument resolveInstrument(FillRequest req) {
-        return instrumentRepository.findBySymbolAndExchange(req.symbol(), req.exchange())
-                .orElseGet(() -> {
-                    try {
-                        return instrumentRepository.save(
-                                new Instrument(req.symbol(), req.exchange(), req.assetClass()));
-                    } catch (DataIntegrityViolationException race) {
-                        // Lost a race on the unique (symbol, exchange) constraint; re-read the winner.
-                        return instrumentRepository.findBySymbolAndExchange(req.symbol(), req.exchange())
-                                .orElseThrow(() -> race);
-                    }
-                });
+    public Ingested ingest(FillRequest req, Long userId) {
+        String externalId = trimToNull(req.externalId());
+
+        if (externalId != null) {
+            Optional<FillResponse> existing =
+                    writer.findExisting(req.accountId(), userId, externalId);
+            if (existing.isPresent()) {
+                return new Ingested(existing.get(), true);
+            }
+        }
+
+        try {
+            return new Ingested(writer.insert(req, userId, externalId), false);
+        } catch (DataIntegrityViolationException race) {
+            return recover(req, userId, externalId, race);
+        }
+    }
+
+    /**
+     * Two constraints can be lost to a concurrent request: the idempotency key, meaning the
+     * other request already recorded this execution, and the unique instrument, meaning both
+     * requests were first to see a new symbol.
+     */
+    private Ingested recover(FillRequest req, Long userId, String externalId,
+                             DataIntegrityViolationException race) {
+        if (externalId != null) {
+            Optional<FillResponse> existing =
+                    writer.findExisting(req.accountId(), userId, externalId);
+            if (existing.isPresent()) {
+                return new Ingested(existing.get(), true);
+            }
+        }
+        // Not a duplicate execution, so it was the instrument race: the winner's row is now
+        // committed and visible, and a second attempt reads it instead of inserting.
+        try {
+            return new Ingested(writer.insert(req, userId, externalId), false);
+        } catch (DataIntegrityViolationException stillFailing) {
+            stillFailing.addSuppressed(race);
+            throw stillFailing;
+        }
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
