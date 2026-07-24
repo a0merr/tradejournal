@@ -22,11 +22,15 @@ import java.util.List;
 
 /**
  * Imports fills from a CSV (e.g. a broker statement export). Expected header:
- * {@code symbol,exchange,assetClass,side,type,quantity,price,fee,filledAt}
- * ({@code fee} and {@code filledAt} optional).
+ * {@code symbol,exchange,assetClass,side,type,quantity,price,fee,filledAt,externalId}
+ * ({@code fee}, {@code filledAt}, and {@code externalId} optional).
  *
  * <p>Each row is ingested in its own transaction via {@link FillService}, so a bad row
  * is reported and skipped without rolling back the rows that already succeeded.
+ *
+ * <p>Rows carrying an {@code externalId} deduplicate against what is already stored, so
+ * re-importing an overlapping statement is safe — the repeats are counted as skipped rather
+ * than booked twice.
  */
 @Service
 public class CsvFillImportService {
@@ -48,6 +52,7 @@ public class CsvFillImportService {
     public ImportResult importCsv(byte[] content, Long accountId, Long userId) {
         List<ImportResult.RowError> errors = new ArrayList<>();
         int imported = 0;
+        int skipped = 0;
 
         try (Reader reader = new BufferedReader(
                 new InputStreamReader(new java.io.ByteArrayInputStream(content), StandardCharsets.UTF_8));
@@ -56,8 +61,11 @@ public class CsvFillImportService {
             for (CSVRecord record : parser) {
                 long line = record.getRecordNumber() + 1; // +1: header is line 1
                 try {
-                    fillService.ingest(toRequest(record, accountId), userId);
-                    imported++;
+                    if (fillService.ingest(toRequest(record, accountId), userId).duplicate()) {
+                        skipped++;
+                    } else {
+                        imported++;
+                    }
                 } catch (Exception ex) {
                     errors.add(new ImportResult.RowError(line, rootMessage(ex)));
                 }
@@ -66,7 +74,7 @@ public class CsvFillImportService {
             throw new UncheckedIOException("Could not read CSV", ex);
         }
 
-        return new ImportResult(imported, errors.size(), errors);
+        return new ImportResult(imported, skipped, errors.size(), errors);
     }
 
     private FillRequest toRequest(CSVRecord r, Long accountId) {
@@ -82,7 +90,8 @@ public class CsvFillImportService {
                 new BigDecimal(require(r, "quantity")),
                 new BigDecimal(require(r, "price")),
                 fee,
-                filledAt);
+                filledAt,
+                get(r, "externalId"));
     }
 
     private static String get(CSVRecord r, String col) {

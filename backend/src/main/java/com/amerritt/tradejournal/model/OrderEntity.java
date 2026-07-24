@@ -50,6 +50,14 @@ public class OrderEntity {
     @Column(nullable = false, length = 12)
     private OrderStatus status;
 
+    /**
+     * The broker's id for the execution this order records, when the caller supplies one.
+     * Unique per account, which makes ingestion idempotent under retries. Null means the
+     * caller opted out of deduplication.
+     */
+    @Column(name = "external_id", length = 64)
+    private String externalId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -57,13 +65,14 @@ public class OrderEntity {
     }
 
     public OrderEntity(Account account, Instrument instrument, Side side, OrderType type,
-                       BigDecimal quantity, OrderStatus status) {
+                       BigDecimal quantity, OrderStatus status, String externalId) {
         this.account = account;
         this.instrument = instrument;
         this.side = side;
         this.type = type;
         this.quantity = quantity;
         this.status = status;
+        this.externalId = externalId;
     }
 
     public Long getId() {
@@ -96,6 +105,10 @@ public class OrderEntity {
 
     public void setStatus(OrderStatus status) {
         this.status = status;
+    }
+
+    public String getExternalId() {
+        return externalId;
     }
 
     public OffsetDateTime getCreatedAt() {
