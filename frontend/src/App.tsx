@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getToken, setToken } from "./api";
+import { api, getToken } from "./api";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 
@@ -7,7 +7,8 @@ export default function App() {
   const [authed, setAuthed] = useState<boolean>(() => getToken() != null);
 
   function logout() {
-    setToken(null);
+    // Clears local tokens immediately; the server-side revocation is fire-and-forget.
+    void api.logout();
     setAuthed(false);
   }
 

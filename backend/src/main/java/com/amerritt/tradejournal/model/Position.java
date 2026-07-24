@@ -18,7 +18,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Immutable
-@Subselect("SELECT account_id, instrument_id, symbol, exchange, net_quantity, avg_price, "
+@Subselect("SELECT account_id, instrument_id, symbol, exchange, net_quantity, avg_fill_price, "
         + "total_fees, fill_count, last_filled_at FROM positions")
 @Synchronize({"fills", "orders", "instruments"})
 @IdClass(PositionId.class)
@@ -39,8 +39,13 @@ public class Position {
     @Column(name = "net_quantity")
     private BigDecimal netQuantity;
 
-    @Column(name = "avg_price")
-    private BigDecimal avgPrice;
+    /**
+     * Quantity-weighted average price across <em>every</em> fill, buys and sells alike. An
+     * execution-quality figure, not a cost basis — the basis of what is still open is FIFO and
+     * comes from {@link com.amerritt.tradejournal.service.PnlCalculator}.
+     */
+    @Column(name = "avg_fill_price")
+    private BigDecimal avgFillPrice;
 
     @Column(name = "total_fees")
     private BigDecimal totalFees;
@@ -74,8 +79,8 @@ public class Position {
         return netQuantity;
     }
 
-    public BigDecimal getAvgPrice() {
-        return avgPrice;
+    public BigDecimal getAvgFillPrice() {
+        return avgFillPrice;
     }
 
     public BigDecimal getTotalFees() {

@@ -25,10 +25,18 @@ spring:
 tradejournal:
   jwt:
     secret: ${TRADEJOURNAL_JWT_SECRET:dev-only-secret-please-override-with-a-256-bit-value-in-prod}
-    expiration-minutes: 120
+    # Access tokens are stateless and therefore not revocable, so the window in which a stolen
+    # one is useful is kept short. Continuity comes from the rotating refresh token below.
+    expiration-minutes: ${TRADEJOURNAL_JWT_EXPIRATION_MINUTES:15}
+    refresh-expiration-days: ${TRADEJOURNAL_REFRESH_EXPIRATION_DAYS:30}
   cors:
     # Comma-separated list of origins allowed to call the API (the deployed frontend).
     allowed-origins: ${TRADEJOURNAL_CORS_ORIGINS:http://localhost:5173}
+  rate-limit:
+    # Token bucket per client IP on the unauthenticated auth endpoints. Generous enough that a
+    # person never meets it; tight enough that credential stuffing does.
+    auth-attempts: ${TRADEJOURNAL_RATE_LIMIT_ATTEMPTS:20}
+    auth-window-minutes: ${TRADEJOURNAL_RATE_LIMIT_WINDOW_MINUTES:5}
 
 management:
   endpoints:

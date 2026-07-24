@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { api, ApiError, setToken } from "../api";
+import { api, ApiError, setSession } from "../api";
 
 export default function Login({ onAuthed }: { onAuthed: () => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -17,7 +17,7 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
         mode === "login"
           ? await api.login(email, password)
           : await api.register(email, password);
-      setToken(res.token);
+      setSession(res);
       onAuthed();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong.");

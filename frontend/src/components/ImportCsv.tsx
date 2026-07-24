@@ -43,7 +43,10 @@ export default function ImportCsv({
           }}
         />
         <span className="muted small">
-          CSV header: symbol,exchange,assetClass,side,type,quantity,price,fee,filledAt
+          CSV header:
+          symbol,exchange,assetClass,side,type,quantity,price,fee,filledAt,externalId
+          {" — "}
+          rows with an externalId are safe to re-upload
         </span>
       </div>
 
@@ -53,6 +56,9 @@ export default function ImportCsv({
       {result && (
         <div className="import-result">
           <span className="pos">{result.imported} imported</span>
+          {result.skipped > 0 && (
+            <span className="muted"> · {result.skipped} already on file</span>
+          )}
           {result.failed > 0 && <span className="neg"> · {result.failed} failed</span>}
           {result.errors.length > 0 && (
             <ul className="import-errors">
