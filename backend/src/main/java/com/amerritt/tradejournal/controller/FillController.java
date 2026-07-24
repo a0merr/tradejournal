@@ -32,12 +32,20 @@ public class FillController {
         this.csvImportService = csvImportService;
     }
 
-    /** The trading bot's entry point: ingest a single execution. */
+    /**
+     * The trading bot's entry point: ingest a single execution.
+     *
+     * <p>201 when the fill was recorded, 200 when {@code externalId} matched an execution
+     * already on file — so a client retrying after a timeout can tell whether its first attempt
+     * had landed, and gets the same fill back either way.
+     */
     @PostMapping
     public ResponseEntity<FillResponse> ingest(@Valid @RequestBody FillRequest req,
                                                @AuthenticationPrincipal AuthPrincipal principal) {
-        FillResponse created = fillService.ingest(req, principal.userId());
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        FillService.Ingested result = fillService.ingest(req, principal.userId());
+        return ResponseEntity
+                .status(result.duplicate() ? HttpStatus.OK : HttpStatus.CREATED)
+                .body(result.fill());
     }
 
     /**
