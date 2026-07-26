@@ -24,7 +24,7 @@ than discovered at deploy time.
    |---|---|---|
    | PostgreSQL | `tradejournal-db` | free plan — **deleted ~30 days after creation** |
    | Web (Docker) | `tradejournal-amerritt` | health-checked at `/actuator/health` |
-3. First boot: Flyway applies `V1`–`V5` and, because `SPRING_PROFILES_ACTIVE=demo`, the
+3. First boot: Flyway applies `V1`–`V6` and, because `SPRING_PROFILES_ACTIVE=demo`, the
    repeatable seed loads a demo account.
 4. The service URL is the whole app — dashboard at `/`, API under `/api`, OpenAPI at
    `/swagger-ui`.
