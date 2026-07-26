@@ -115,6 +115,23 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+          TestRestTemplate picks its request factory from what is on the classpath. With only
+          the JDK's HttpURLConnection available, any POST that streams a body and comes back
+          401 dies with "cannot retry due to server authentication, in streaming mode": the
+          connection sees WWW-Authenticate, decides to retry with credentials, and cannot,
+          because the body is already gone. Half the auth suite asserts exactly that response.
+
+          The header is correct — RFC 6750 asks for it, and a test pins it — so the client is
+          what changes. With HttpClient 5 present, Spring uses it instead and a 401 to a POST
+          is just a response.
+        -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

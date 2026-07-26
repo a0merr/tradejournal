@@ -39,11 +39,11 @@ Everything in this table is implemented and covered by the test suite or the CI 
 
 | Area | Implemented | Where |
 |---|---|---|
-| Schema | 5 versioned Flyway migrations, FKs, indexes, `NUMERIC` money, a `positions` view | [`db/migration/`](backend/src/main/resources/db/migration) |
+| Schema | 6 versioned Flyway migrations, FKs, indexes, `NUMERIC` money, a `positions` view | [`db/migration/`](backend/src/main/resources/db/migration) |
 | Auth | Register, login, refresh, logout. 15-minute JWTs; opaque refresh tokens, single-use, SHA-256 at rest, family-chained with reuse detection | [`AuthService`](backend/src/main/java/com/amerritt/tradejournal/service/AuthService.java), [`RefreshTokenService`](backend/src/main/java/com/amerritt/tradejournal/service/RefreshTokenService.java) |
 | Ingestion | `POST /api/fills`, idempotent on the broker execution id, safe under concurrent retries | [`FillWriter`](backend/src/main/java/com/amerritt/tradejournal/service/FillWriter.java), [`V4__fill_idempotency.sql`](backend/src/main/resources/db/migration/V4__fill_idempotency.sql) |
 | CSV import | Multipart upload, per-row error reporting, re-import skips rows already on file | [`CsvFillImportService`](backend/src/main/java/com/amerritt/tradejournal/service/CsvFillImportService.java) |
-| Positions | Reconstructed from fills by a SQL view — never a stored mutable number | [`V5__positions_view_avg_fill_price.sql`](backend/src/main/resources/db/migration/V5__positions_view_avg_fill_price.sql) |
+| Positions | Reconstructed from fills by a SQL view — never a stored mutable number | [`V6__positions_view_avg_fill_price_scale.sql`](backend/src/main/resources/db/migration/V6__positions_view_avg_fill_price_scale.sql) |
 | Performance | Realized PnL, win rate, closed-trade count, open exposure, FIFO cost basis — one streaming lot-matching replay | [`PnlCalculator`](backend/src/main/java/com/amerritt/tradejournal/service/PnlCalculator.java) |
 | Errors | RFC 7807 `application/problem+json` on every path, including rejections from the security filter chain | [`GlobalExceptionHandler`](backend/src/main/java/com/amerritt/tradejournal/exception/GlobalExceptionHandler.java) |
 | Abuse control | Per-IP token bucket on the unauthenticated auth endpoints, continuous refill, `Retry-After` | [`RateLimiter`](backend/src/main/java/com/amerritt/tradejournal/security/RateLimiter.java) |
@@ -413,7 +413,7 @@ tradejournal/
 │   │   ├── security/            # JWT filter, rate limiter, problem-detail entry points
 │   │   └── config/
 │   ├── src/main/resources/
-│   │   ├── db/migration/        # Flyway: V1__init.sql … V5__…
+│   │   ├── db/migration/        # Flyway: V1__init.sql … V6__…
 │   │   ├── db/seed/             # repeatable demo seed (dev + demo profiles)
 │   │   └── application.yml
 │   └── src/test/                # JUnit 5 + Testcontainers
