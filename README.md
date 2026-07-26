@@ -309,6 +309,8 @@ cd backend && mvn verify    # requires Docker (Testcontainers spins up PostgreSQ
 
 Integration tests run against **real PostgreSQL via Testcontainers**, not an in-memory substitute — so migrations, constraints, the partial unique index, and view SQL are exercised exactly as they run in production. Every CI run prints these counts to its job summary, so the number in this README is checkable rather than claimed.
 
+The `Test` / `IT` suffix is load-bearing: Surefire runs `*Test` in the fast phase, Failsafe runs `*IT` in the integration phase, and `mvn verify` runs both. That split only works if `maven-failsafe-plugin` is actually declared — it was not, so for several commits the integration suite compiled on every build and ran on none of them, and `mvn verify` returned green in 23 seconds. The counts above are now the counts CI executes; the job summary is the receipt.
+
 ---
 
 ## Run it locally
