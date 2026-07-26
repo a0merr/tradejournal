@@ -3,6 +3,7 @@ package com.amerritt.tradejournal.security;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -27,6 +28,19 @@ public class SecurityConfig {
             "/swagger-ui",
             "/swagger-ui/**",
             "/actuator/health"
+    };
+
+    /**
+     * The production image bakes the built dashboard into the jar, so the app serves its own
+     * frontend. Those files must be reachable before anyone has a token — otherwise the login
+     * screen is behind the login. Scoped to the exact paths Vite emits rather than a blanket
+     * "permit anything that is not /api", which would also expose future actuator endpoints.
+     */
+    private static final String[] STATIC_PATHS = {
+            "/",
+            "/index.html",
+            "/assets/**",
+            "/favicon.ico"
     };
 
     private final JwtAuthFilter jwtAuthFilter;
@@ -58,6 +72,7 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
+                        .requestMatchers(HttpMethod.GET, STATIC_PATHS).permitAll()
                         .anyRequest().authenticated())
                 // Rejections from the filter chain never reach @RestControllerAdvice, so they
                 // get their RFC 7807 body here instead of an empty response.

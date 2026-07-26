@@ -1,9 +1,14 @@
--- Repeatable dev-profile seed. Idempotent: guarded so re-runs don't duplicate.
+-- Repeatable dev/demo seed. Idempotent: guarded so re-runs don't duplicate.
 -- Demo login -> email: demo@tradejournal.dev  password: password
--- (bcrypt hash below is the well-known Spring sample hash for the literal "password")
+--
+-- The hash below is verified by DemoSeedTest, which fails the build if it stops matching the
+-- password this file documents. That test exists because the previous value was a "well-known
+-- sample hash" copied from elsewhere that turned out to encode nothing we could name — the
+-- documented demo login had never worked, and nothing in the suite noticed, because the seed
+-- only loads under the dev and demo profiles and the tests register their own users.
 
 INSERT INTO users (email, password_hash)
-SELECT 'demo@tradejournal.dev', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'
+SELECT 'demo@tradejournal.dev', '$2b$10$4pscYtBskZ5Dy8L2Szvqc.ZOg33bAPwz6VkcKKWJevptsCKxLMtzK'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'demo@tradejournal.dev');
 
 INSERT INTO accounts (user_id, broker, base_currency)

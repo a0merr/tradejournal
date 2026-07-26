@@ -1,10 +1,11 @@
 # Render Blueprint — one-click deploy of the whole stack.
-# In the Render dashboard: New + > Blueprint > connect this repo. Render reads this file
-# and provisions a managed Postgres, the Spring Boot API (Docker), and the static frontend.
+# In the Render dashboard: New + > Blueprint > connect this repo. Render reads this file and
+# provisions a managed Postgres plus one web service.
 #
-# NOTE: the two onrender.com URLs below assume the service names resolve as-is. If Render
-# appends a suffix (because a name is taken), update VITE_API_BASE_URL and
-# TRADEJOURNAL_CORS_ORIGINS to the actual URLs Render assigns, then redeploy.
+# One service, not two: the root Dockerfile builds the React bundle into the Spring Boot jar,
+# so the dashboard and the API share an origin. Nothing here depends on a hostname Render
+# assigns, which is what broke the previous two-service version — the names it hard-coded had
+# been taken by an unrelated account, so the frontend pointed at a stranger's site.
 
 databases:
   - name: tradejournal-db
@@ -13,17 +14,16 @@ databases:
     plan: free
 
 services:
-  # --- Spring Boot API (Docker) ---
   - type: web
-    name: tradejournal-api
+    name: tradejournal-amerritt
     runtime: docker
-    rootDir: backend
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     healthCheckPath: /actuator/health
     envVars:
       - key: SPRING_PROFILES_ACTIVE
-        value: dev          # loads the demo seed so the live demo has data
+        value: demo          # loads db/seed so the demo login has trades to show
       - key: DB_HOST
         fromDatabase: { name: tradejournal-db, property: host }
       - key: DB_PORT
@@ -36,21 +36,5 @@ services:
         fromDatabase: { name: tradejournal-db, property: password }
       - key: TRADEJOURNAL_JWT_SECRET
         generateValue: true   # Render generates a strong 256-bit secret
-      - key: TRADEJOURNAL_CORS_ORIGINS
-        value: https://tradejournal-web.onrender.com
-
-  # --- React frontend (static) ---
-  - type: web
-    name: tradejournal-web
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
-    envVars:
-      - key: VITE_API_BASE_URL
-        value: https://tradejournal-api.onrender.com
-    routes:
-      # SPA fallback: serve index.html for client-side routes
-      - type: rewrite
-        source: /*
-        destination: /index.html
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=75

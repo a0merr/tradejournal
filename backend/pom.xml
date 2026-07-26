@@ -115,6 +115,23 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+          TestRestTemplate picks its request factory from what is on the classpath. With only
+          the JDK's HttpURLConnection available, any POST that streams a body and comes back
+          401 dies with "cannot retry due to server authentication, in streaming mode": the
+          connection sees WWW-Authenticate, decides to retry with credentials, and cannot,
+          because the body is already gone. Half the auth suite asserts exactly that response.
+
+          The header is correct — RFC 6750 asks for it, and a test pins it — so the client is
+          what changes. With HttpClient 5 present, Spring uses it instead and a 401 to a POST
+          is just a response.
+        -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -122,6 +139,32 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!--
+              Without this, nothing runs the integration tests. Surefire's default includes are
+              **/Test*.java, **/*Test.java, **/*Tests.java and **/*TestCase.java — none of which
+              match a class named *IT, so the Testcontainers suite compiled on every build and
+              executed on none of them. `mvn verify` looked green in 23 seconds while the entire
+              database-backed half of the suite sat unrun.
+
+              Failsafe's default includes are **/IT*.java, **/*IT.java and **/*ITCase.java, which
+              is why the naming split is worth keeping: the suffix decides the phase, so a slow
+              database test cannot accidentally land in the fast one.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <!-- `verify` is what fails the build; without it a failed IT is
+                                 recorded in the report and the build still passes. -->
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
