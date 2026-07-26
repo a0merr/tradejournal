@@ -9,6 +9,9 @@ jobs:
   backend:
     name: backend (unit + Testcontainers)
     runs-on: ubuntu-latest
+    # A hung test otherwise holds the runner until GitHub's 6-hour ceiling. The full suite runs
+    # in about four minutes, so anything past twenty is stuck, not slow.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
