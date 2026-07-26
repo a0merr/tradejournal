@@ -1,0 +1,37 @@
+# Fly.io deployment for the live demo. One app serves both tiers: the root Dockerfile bakes
+# the React bundle into the Spring Boot jar, so there is a single origin and no CORS wiring.
+#
+# Database, JWT secret, and datasource credentials are secrets, not values here:
+#   fly secrets set SPRING_DATASOURCE_URL=... SPRING_DATASOURCE_USERNAME=... \
+#                   SPRING_DATASOURCE_PASSWORD=... TRADEJOURNAL_JWT_SECRET=...
+
+app = "tradejournal-amerritt"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Loads db/seed alongside the migrations so the demo account has trades to look at.
+  SPRING_PROFILES_ACTIVE = "demo"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_start_machines = true
+  # Suspend rather than stop: the machine's memory is snapshotted, so waking it costs about a
+  # second instead of a full JVM boot. A demo link that hangs for a minute is a dead link.
+  auto_stop_machines = "suspend"
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/actuator/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
