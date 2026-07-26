@@ -1,7 +1,8 @@
 package com.amerritt.tradejournal;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -20,7 +21,6 @@ import org.testcontainers.containers.PostgreSQLContainer;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles({"dev", "test"})
-@Import(TestHttpClientConfig.class)
 public abstract class AbstractPostgresIT {
 
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -36,5 +36,17 @@ public abstract class AbstractPostgresIT {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("tradejournal.jwt.secret",
                 () -> "test-only-secret-that-is-definitely-at-least-32-bytes-long");
+    }
+
+    /**
+     * Bounds the timeouts on the shared {@link TestRestTemplate}. Applied through an injected
+     * setter rather than by publishing a {@code RestTemplateBuilder} bean, because
+     * {@code TestRestTemplateContextCustomizer} builds the template from a private static
+     * builder of its own and never consults the context — so the obvious configuration point is
+     * accepted without complaint and does nothing at all.
+     */
+    @Autowired
+    void boundHttpTimeouts(TestRestTemplate restTemplate) {
+        restTemplate.getRestTemplate().setRequestFactory(TestHttpClientConfig.requestFactory());
     }
 }
