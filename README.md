@@ -3,7 +3,7 @@
 **A full-stack trade journal: ingests trading-bot fills into PostgreSQL through a Spring Boot REST API, with a normalized schema, versioned migrations, rotating-JWT authentication, and a React dashboard for reviewing positions and performance.**
 
 [![CI](https://github.com/a0merr/tradejournal/actions/workflows/ci.yml/badge.svg)](https://github.com/a0merr/tradejournal/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-38%20passing-brightgreen)](#testing)
+[![tests](https://img.shields.io/badge/tests-42%20passing-brightgreen)](#testing)
 [![release](https://img.shields.io/github/v/release/a0merr/tradejournal?display_name=tag&sort=semver)](https://github.com/a0merr/tradejournal/releases)
 [![Java](https://img.shields.io/badge/Java-21-ED8B00?style=flat&logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-6DB33F?style=flat&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
@@ -272,7 +272,16 @@ The suite is organised around *what goes wrong*, not around class coverage. Each
 | 22 | The bucket refills in a burst at a window boundary, doubling the effective budget | `RateLimiterTest.refillsContinuously`, `.doesNotRefillBeyondCapacity` |
 | 23 | One noisy client's throttle locks out every other client | `RateLimiterTest.keysAreIndependent` |
 | 24 | Idle-bucket eviction hands a throttled client a fresh budget | `RateLimiterTest.evictionDropsRecoveredKeysAndKeepsThrottledOnes` |
-| 25 | The production image does not start, or starts without its migrations / static bundle | `image` job in [`ci.yml`](.github/workflows/ci.yml) — boots the image against PostgreSQL, signs in as the demo user, reads positions, and asserts an unauthenticated call still gets a 401 problem document |
+| 25 | The published demo credentials do not actually sign in | `DemoSeedTest.seededDemoUserAcceptsTheDocumentedPassword`, `DemoSeedIT.theDocumentedDemoCredentialsSignIn` |
+| 26 | The demo account signs in but the dashboard is empty | `DemoSeedIT.theSeededAccountHasPositionsToLookAt` |
+| 27 | The production image does not start, or starts without its migrations / static bundle | `image` job in [`ci.yml`](.github/workflows/ci.yml) — boots the image against PostgreSQL, signs in as the demo user, reads positions, and asserts an unauthenticated call still gets a 401 problem document |
+
+Scenarios 25 and 26 exist because the CI image job found the defect on its first run: the seed's
+password hash — copied in as "the well-known sample hash for the literal `password`" — matched no
+password at all, so the demo login published in `DEPLOY.md` had never worked. The suite could not
+have caught it. The seed loads under the `dev` profile, which the integration tests do activate, but
+every one of them registered a throwaway user of its own, so the demo account was the single user
+path nothing exercised. It is now covered twice: once structurally against the SQL, once over HTTP.
 
 Two things the timing-sensitive tests deliberately avoid: `RateLimiterTest` drives a `Clock` it controls rather than sleeping, and `AuthRateLimitIT` lowers the budget through `@DynamicPropertySource` rather than making hundreds of real requests. Tests that sleep are tests that flake.
 
@@ -284,17 +293,19 @@ Two things the timing-sensitive tests deliberately avoid: `RateLimiterTest` driv
 cd backend && mvn verify    # requires Docker (Testcontainers spins up PostgreSQL 16)
 ```
 
-**38 tests**, split by what they assert:
+**42 tests**, split by what they assert:
 
 | Suite | Tests | Kind |
 |---|---:|---|
 | `PnlCalculatorTest` | 14 | Pure unit — FIFO lot-matching, no Spring, no database |
 | `RateLimiterTest` | 6 | Pure unit — token bucket against a controlled `Clock` |
 | `MonetaryPrecisionTest` | 3 | Structural — classpath scan that fails the build on float money |
+| `DemoSeedTest` | 1 | Structural — the seeded demo hash matches the published password |
 | `AuthRotationIT` | 7 | Integration — Testcontainers, real PostgreSQL 16 |
 | `FillJourneyIT` | 6 | Integration — Testcontainers, real PostgreSQL 16 |
+| `DemoSeedIT` | 3 | Integration — Testcontainers, real PostgreSQL 16 |
 | `AuthRateLimitIT` | 2 | Integration — Testcontainers, real PostgreSQL 16 |
-| **Total** | **38** | 23 unit / 15 integration |
+| **Total** | **42** | 24 unit / 18 integration |
 
 Integration tests run against **real PostgreSQL via Testcontainers**, not an in-memory substitute — so migrations, constraints, the partial unique index, and view SQL are exercised exactly as they run in production. Every CI run prints these counts to its job summary, so the number in this README is checkable rather than claimed.
 

@@ -146,10 +146,10 @@ Output reads `first use → 200`, `replay → 401` with the RFC 7807 body visibl
 
 ### 1:20–1:27 — It is tested and it ships
 
-**Screen:** quick pan across the CI run summary (the test table: 38 tests, 23 unit / 15
+**Screen:** quick pan across the CI run summary (the test table: 42 tests, 24 unit / 18
 integration) and the `production image (build + boot + smoke)` job, green.
 
-**Caption:** `38 tests. CI boots the deployed image every commit.`
+**Caption:** `42 tests. CI boots the deployed image every commit.`
 
 ---
 
