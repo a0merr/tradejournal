@@ -62,3 +62,13 @@ spring:
       on-profile: dev
   flyway:
     locations: classpath:db/migration,classpath:db/seed
+
+---
+# The hosted demo. Same seed as dev, but a distinct profile so "what is running in production"
+# never reads as "somebody left the dev profile on".
+spring:
+  config:
+    activate:
+      on-profile: demo
+  flyway:
+    locations: classpath:db/migration,classpath:db/seed

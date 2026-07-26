@@ -7,6 +7,7 @@ on:
 
 jobs:
   backend:
+    name: backend (unit + Testcontainers)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +21,24 @@ jobs:
         working-directory: backend
         run: mvn -B verify
 
+      # The badge only says pass/fail. This puts the actual counts in the run summary, so
+      # "38 tests" in the README is a number anyone can check rather than one to take on trust.
+      - name: Test summary
+        if: always()
+        working-directory: backend
+        run: python3 ../.github/scripts/test_summary.py >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
+
   frontend:
+    name: frontend (typecheck + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,3 +52,70 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  image:
+    name: production image (build + boot + smoke)
+    runs-on: ubuntu-latest
+    # A green test suite does not prove the artifact you deploy starts. This job builds the
+    # exact image the hosted demo runs, boots it against a real Postgres, and drives it over
+    # HTTP — so a broken migration, a missing static asset, or a bad Dockerfile fails here
+    # rather than in production.
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: tradejournal
+          POSTGRES_USER: tradejournal
+          POSTGRES_PASSWORD: tradejournal
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tradejournal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build -t tradejournal:ci .
+
+      - name: Boot it against Postgres
+        run: |
+          docker run -d --name tj --network host \
+            -e SPRING_PROFILES_ACTIVE=demo \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/tradejournal \
+            -e SPRING_DATASOURCE_USERNAME=tradejournal \
+            -e SPRING_DATASOURCE_PASSWORD=tradejournal \
+            -e TRADEJOURNAL_JWT_SECRET=ci-only-secret-not-used-anywhere-else-256-bits \
+            tradejournal:ci
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+              echo "up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the image never reported healthy"
+          docker logs tj
+          exit 1
+
+      - name: Smoke-test the running container
+        run: |
+          set -euo pipefail
+          # Flyway ran and the dashboard is served from the same origin as the API.
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+          # The seeded demo account can actually sign in.
+          token=$(curl -fsS -X POST http://localhost:8080/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"demo@tradejournal.dev","password":"password"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          # ...and its seeded fills reconstruct into positions.
+          curl -fsS http://localhost:8080/api/positions -H "Authorization: Bearer $token" \
+            | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p, "no positions"; print(len(p), "positions")'
+          # An unauthenticated call is still refused, with the RFC 7807 body.
+          code=$(curl -s -o /tmp/body -w '%{http_code}' http://localhost:8080/api/positions)
+          test "$code" = "401"
+          grep -q 'urn:tradejournal:problem:unauthenticated' /tmp/body
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs tj
