@@ -22,7 +22,7 @@ jobs:
         run: mvn -B verify
 
       # The badge only says pass/fail. This puts the actual counts in the run summary, so
-      # "38 tests" in the README is a number anyone can check rather than one to take on trust.
+      # "42 tests" in the README is a number anyone can check rather than one to take on trust.
       - name: Test summary
         if: always()
         working-directory: backend
@@ -103,11 +103,21 @@ jobs:
           set -euo pipefail
           # Flyway ran and the dashboard is served from the same origin as the API.
           curl -fsS http://localhost:8080/ | grep -q 'id="root"'
-          # The seeded demo account can actually sign in.
-          token=$(curl -fsS -X POST http://localhost:8080/api/auth/login \
+
+          # The seeded demo account can actually sign in. Reported with the response body
+          # rather than as a bare curl exit code, because "(22) error: 401" tells you the
+          # request failed and nothing about why.
+          resp=$(curl -s -w '\n%{http_code}' -X POST http://localhost:8080/api/auth/login \
             -H 'Content-Type: application/json' \
-            -d '{"email":"demo@tradejournal.dev","password":"password"}' \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            -d '{"email":"demo@tradejournal.dev","password":"password"}')
+          code=$(printf '%s' "$resp" | tail -n1)
+          body=$(printf '%s' "$resp" | sed '$d')
+          if [ "$code" != "200" ]; then
+            echo "::error::demo login returned $code — the seeded credentials do not work"
+            echo "$body"
+            exit 1
+          fi
+          token=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
           # ...and its seeded fills reconstruct into positions.
           curl -fsS http://localhost:8080/api/positions -H "Authorization: Bearer $token" \
             | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p, "no positions"; print(len(p), "positions")'
