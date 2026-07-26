@@ -15,7 +15,15 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
  * retry with credentials, and fails with "cannot retry due to server authentication, in
  * streaming mode". Most of the auth suite asserts exactly that response.
  *
- * <p>Every phase is then bounded. HttpClient's default response timeout is infinite, and an
+ * <p>Automatic retries are off, and that is not a preference. HttpClient's default retry
+ * strategy re-sends on 429 and <em>honours the {@code Retry-After} header</em>.
+ * {@code AuthRateLimitIT} configures a 60-minute window, so the server answered its deliberate
+ * 429 with {@code Retry-After: 3600} — entirely correctly — and the client went to sleep for an
+ * hour. The suite did not deadlock and the server was never at fault; the test client took the
+ * API at its word. Response timeouts do not help here, because a client sleeping between
+ * attempts is not waiting on a socket.
+ *
+ * <p>Timeouts are set anyway. HttpClient's default response timeout is infinite, and an
  * integration test that waits forever is worse than one that fails: a stuck run held a CI
  * runner for twenty-four minutes and its log ended mid-request, naming nothing.
  *
@@ -43,8 +51,9 @@ final class TestHttpClientConfig {
 
         CloseableHttpClient client = HttpClients.custom()
                 .setDefaultRequestConfig(requestConfig)
-                // A retried POST would re-ingest a fill, which is the one thing this API exists
-                // to prevent. Tests assert on first responses.
+                // See above: the default strategy sleeps for Retry-After on a 429, which is an
+                // hour here. Also, a silently retried POST is the wrong shape for tests that
+                // assert on a first response.
                 .disableAutomaticRetries()
                 .disableRedirectHandling()
                 .build();
