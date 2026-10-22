@@ -16,6 +16,8 @@ dist-ssr/
 # tsc -b emits these from vite.config.ts; keep only the .ts source
 frontend/vite.config.js
 frontend/vite.config.d.ts
+frontend/vitest.config.js
+frontend/vitest.config.d.ts
 
 # Env / secrets
 .env
