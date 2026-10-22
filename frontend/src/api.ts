@@ -110,9 +110,18 @@ export class ApiError extends Error {
  * and the server would (correctly) treat the second as a stolen-token replay and kill the
  * session. One in-flight refresh is shared by every caller that is waiting on it.
  */
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
-function refreshSession(): Promise<boolean> {
+/**
+ * "rejected" means the server refused the refresh token: the session is over. "offline"
+ * means the refresh never reached the server, which says nothing about the session — the
+ * tokens are kept so the next request can try again once the network is back.
+ */
+type RefreshOutcome = "refreshed" | "rejected" | "offline";
+
+const OFFLINE_MESSAGE = "Can't reach the server — check your connection and try again.";
+
+function refreshSession(): Promise<RefreshOutcome> {
   if (!refreshInFlight) {
     refreshInFlight = rotateTokens().finally(() => {
       refreshInFlight = null;
@@ -121,9 +130,9 @@ function refreshSession(): Promise<boolean> {
   return refreshInFlight;
 }
 
-async function rotateTokens(): Promise<boolean> {
+async function rotateTokens(): Promise<RefreshOutcome> {
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
+  if (!refreshToken) return "rejected";
   try {
     const resp = await fetch(`${API_BASE}/api/auth/refresh`, {
       method: "POST",
@@ -132,13 +141,27 @@ async function rotateTokens(): Promise<boolean> {
     });
     if (!resp.ok) {
       setSession(null);
-      return false;
+      return "rejected";
     }
     setSession((await resp.json()) as AuthResponse);
-    return true;
+    return "refreshed";
   } catch {
-    return false; // network failure: keep the session, let the caller surface the error
+    return "offline"; // network failure: keep the session, let the caller surface the error
   }
+}
+
+/**
+ * Handles a 401 on a protected endpoint: refresh once and retry, or end the session.
+ * Returns the retried result, or throws.
+ */
+async function recoverFrom401<T>(allowRetry: boolean, retry: () => Promise<T>): Promise<T> {
+  if (allowRetry) {
+    const outcome = await refreshSession();
+    if (outcome === "refreshed") return retry();
+    if (outcome === "offline") throw new ApiError(0, OFFLINE_MESSAGE);
+  }
+  setSession(null);
+  throw new ApiError(401, "Session expired — please sign in again.");
 }
 
 /** Reads the RFC 7807 `detail` the API returns for every failure. */
@@ -164,14 +187,10 @@ async function request<T>(
   const resp = await fetch(`${API_BASE}/api${path}`, { ...init, headers });
   if (resp.status === 401) {
     // A 401 from /auth/* is a credentials failure, not an expired access token.
-    if (allowRetry && !path.startsWith("/auth/") && (await refreshSession())) {
-      return request<T>(path, init, false);
-    }
     if (path.startsWith("/auth/")) {
       throw new ApiError(401, await problemDetail(resp));
     }
-    setSession(null);
-    throw new ApiError(401, "Session expired — please sign in again.");
+    return recoverFrom401(allowRetry, () => request<T>(path, init, false));
   }
   if (!resp.ok) {
     throw new ApiError(resp.status, await problemDetail(resp));
@@ -201,11 +220,7 @@ async function importFills(
     body: form,
   });
   if (resp.status === 401) {
-    if (allowRetry && (await refreshSession())) {
-      return importFills(accountId, file, false);
-    }
-    setSession(null);
-    throw new ApiError(401, "Session expired — please sign in again.");
+    return recoverFrom401(allowRetry, () => importFills(accountId, file, false));
   }
   if (!resp.ok) {
     throw new ApiError(resp.status, await problemDetail(resp));
