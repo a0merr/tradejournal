@@ -50,7 +50,7 @@ Everything in this table is implemented and covered by the test suite or the CI 
 | Precision | `BigDecimal` end to end, serialized as JSON strings; a test fails the build if a `float`/`double` reaches an entity or DTO | [`MonetaryPrecisionTest`](backend/src/test/java/com/amerritt/tradejournal/MonetaryPrecisionTest.java) |
 | Frontend | Login, positions table, exposure chart, performance cards, CSV upload, transparent token refresh with single-flight de-duplication | [`frontend/src/`](frontend/src) |
 | Packaging | One image: the React bundle is built into the Spring Boot jar, so the deployment has a single origin and no CORS wiring | [`Dockerfile`](Dockerfile) |
-| CI | Unit + Testcontainers suites, frontend typecheck/build, and a job that boots the production image and smoke-tests it over HTTP | [`ci.yml`](.github/workflows/ci.yml) |
+| CI | Unit + Testcontainers suites, frontend typecheck/build/component tests, and a job that boots the production image and smoke-tests it over HTTP | [`ci.yml`](.github/workflows/ci.yml) |
 
 ### Not implemented — and what that costs
 
@@ -66,7 +66,7 @@ Listed because a portfolio README that only enumerates strengths is not informat
 | **Rate limiting is per instance** | The token buckets are in process memory. Behind *n* replicas the effective limit is *n* × the configured one; the fix is moving the buckets to Redis. |
 | **Refresh token in `localStorage`** | Reachable by any XSS on the origin. The fix is an `httpOnly` cookie, which then needs CSRF protection on `/api/auth/refresh` — a change to both tiers, not a one-line move. |
 | **PnL is replayed, not stored** | Every `/api/performance` call re-reads an account's fills. It streams and stays bounded by open lots rather than fill count, but the durable fix is a snapshot advanced at ingest with the replay kept as reconciliation. |
-| **No frontend tests** | The dashboard is verified by hand and by the CI smoke job hitting the served bundle; there is no component or E2E suite. |
+| **No browser E2E suite** | The API client and components are tested in jsdom against a scripted `fetch` (see [Testing](#testing)), and the CI smoke job hits the served bundle — but nothing drives a real browser through the deployed stack. |
 
 ---
 
@@ -274,6 +274,9 @@ The suite is organised around *what goes wrong*, not around class coverage. Each
 | 24 | Idle-bucket eviction hands a throttled client a fresh budget | `RateLimiterTest.evictionDropsRecoveredKeysAndKeepsThrottledOnes` |
 | 25 | The published demo credentials do not actually sign in | `DemoSeedTest.seededDemoUserAcceptsTheDocumentedPassword`, `DemoSeedIT.theDocumentedDemoCredentialsSignIn` |
 | 26 | The demo account signs in but the dashboard is empty | `DemoSeedIT.theSeededAccountHasPositionsToLookAt` |
+| 28 | Two requests expire together, both refresh, and the second spends an already-used token — which the server correctly treats as theft and kills the session | `api.test.ts` › *shares one in-flight refresh between concurrent 401s* (mutation-checked: removing the de-duplication fails it) |
+| 29 | A network blip during token refresh signs the user out with "Session expired" — it did, until this test was written | `api.test.ts` › *keeps the session if the refresh fails on the network*, *recovers on the next request once the network is back* |
+| 30 | The client refreshes on a bad-password 401 from `/auth/login`, or retries a protected call forever | `api.test.ts` › *a 401 from /auth/login is bad credentials*, *retries at most once* |
 | 27 | The production image does not start, or starts without its migrations / static bundle | `image` job in [`ci.yml`](.github/workflows/ci.yml) — boots the image against PostgreSQL, signs in as the demo user, reads positions, and asserts an unauthenticated call still gets a 401 problem document |
 
 Scenarios 25 and 26 exist because the CI image job found the defect on its first run: the seed's
@@ -306,6 +309,12 @@ cd backend && mvn verify    # requires Docker (Testcontainers spins up PostgreSQ
 | `DemoSeedIT` | 3 | Integration — Testcontainers, real PostgreSQL 16 |
 | `AuthRateLimitIT` | 2 | Integration — Testcontainers, real PostgreSQL 16 |
 | **Total** | **42** | 24 unit / 18 integration |
+
+```bash
+cd frontend && npm test     # Vitest + Testing Library in jsdom, no backend needed
+```
+
+**30 frontend tests**: 15 on the API client's session state machine (refresh, single-flight de-duplication, retry limits, offline handling, multipart upload) and 15 on components (login, account switching, 401 → back to login, error banners, CSV import results, number formatting). `fetch` is replaced by a small router that scripts responses per route — "401, then 200" — so the client's real retry logic runs, not a mock of it.
 
 Integration tests run against **real PostgreSQL via Testcontainers**, not an in-memory substitute — so migrations, constraints, the partial unique index, and view SQL are exercised exactly as they run in production. Every CI run prints these counts to its job summary, so the number in this README is checkable rather than claimed.
 
@@ -438,7 +447,8 @@ Ordered by what would most improve the system, not by what is easiest.
 - [ ] Currency on fills; today an account is implicitly single-currency
 - [ ] Redis-backed rate-limit buckets so the limit survives horizontal scaling
 - [ ] A price feed, and with it unrealized PnL and mark-to-market exposure
-- [ ] Frontend component/E2E tests
+- [x] Frontend component tests (API client session logic + dashboard)
+- [ ] Browser E2E (Playwright) against the production image
 
 ---
 
